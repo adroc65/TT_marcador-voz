@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Marcador por voz</title>
+<style>
+  :root { --bg:#10151c; --panel:#1a222d; --line:#2b3644; --text:#e8edf3; --dim:#8b98a8; --yo:#4cc38a; --rival:#f0705a; --accent:#5aa9f0; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:16px; background:var(--bg); color:var(--text); font:16px/1.4 system-ui, sans-serif; max-width:560px; margin-inline:auto; }
+  h1 { font-size:18px; margin:0 0 4px; font-weight:600; }
+  h2 { font-size:13px; margin:22px 0 8px; color:var(--dim); text-transform:uppercase; letter-spacing:.06em; font-weight:600; }
+  #cabecera { color:var(--dim); margin-bottom:10px; min-height:1.4em; }
+  #cabecera b { color:var(--text); }
+  .score { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .side { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:10px; text-align:center; }
+  .side small { color:var(--dim); display:block; }
+  .side b { font-size:72px; line-height:1; font-variant-numeric:tabular-nums; }
+  .yo b { color:var(--yo); } .rival b { color:var(--rival); }
+  #parciales { margin-top:8px; color:var(--dim); font-variant-numeric:tabular-nums; min-height:1.4em; }
+  button, select, input[type=text] { font:inherit; color:var(--text); background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px; }
+  button { cursor:pointer; }
+  button:active { filter:brightness(1.3); }
+  #mic { width:100%; margin-top:12px; font-size:18px; font-weight:600; background:var(--accent); color:#06121f; border:0; padding:16px; }
+  #mic.on { background:var(--rival); color:#fff; }
+  .row { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:8px; }
+  .row.dos { grid-template-columns:1fr 1fr; }
+  .campo { display:grid; grid-template-columns:110px 1fr; gap:8px; align-items:center; margin-top:8px; color:var(--dim); }
+  .campo input, .campo select { width:100%; padding:10px; }
+  #estado { margin-top:10px; color:var(--dim); min-height:1.4em; }
+  #oido { background:var(--panel); border:1px dashed var(--line); border-radius:10px; padding:10px; min-height:44px; color:var(--dim); font-style:italic; }
+  label.chk { display:flex; gap:8px; align-items:center; margin:6px 0; color:var(--dim); }
+  table { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; }
+  th, td { padding:6px 8px; border-bottom:1px solid var(--line); text-align:right; }
+  th:first-child, td:first-child { text-align:left; }
+  th { color:var(--dim); font-weight:500; font-size:13px; }
+  #log { list-style:none; padding:0; margin:0; font-size:14px; }
+  #log li { padding:6px 0; border-bottom:1px solid var(--line); }
+  #log .raw { color:var(--dim); }
+  #log .ok { color:var(--yo); } #log .no { color:var(--rival); }
+  details { margin-top:8px; }
+  details.ayuda { color:var(--dim); font-size:14px; margin-top:16px; }
+  .partido { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:10px 12px; }
+  .partido summary { cursor:pointer; }
+  .partido .sets { color:var(--dim); margin:8px 0; font-variant-numeric:tabular-nums; }
+  .partido button { padding:8px 12px; margin-top:10px; font-size:14px; }
+  .vacio { color:var(--dim); }
+  code { color:var(--text); }
+</style>
+</head>
+<body>
+<h1>Marcador por voz</h1>
+<div id="cabecera"></div>
+
+<div class="score">
+  <div class="side yo"><small id="lblYo">Yo</small><b id="pYo">0</b></div>
+  <div class="side rival"><small id="lblRival">Rival</small><b id="pRival">0</b></div>
+</div>
+<div id="parciales"></div>
+
+<button id="mic">Iniciar escucha</button>
+<div id="estado">Micrófono apagado.</div>
+
+<div class="row">
+  <button data-cmd="positivo">+ Yo</button>
+  <button data-cmd="negativo">+ Rival</button>
+  <button data-cmd="borrar">Borrar</button>
+</div>
+
+<h2>Partido</h2>
+<div class="campo"><span>Rival</span><input type="text" id="cfgRival" placeholder="Nombre (opcional)" autocomplete="off"></div>
+<div class="campo"><span>Al mejor de</span>
+  <select id="cfgMejor"><option value="1">1 set</option><option value="3">3 sets</option><option value="5">5 sets</option><option value="7">7 sets</option></select></div>
+<div class="campo"><span>Saca primero</span>
+  <select id="cfgSaca"><option value="yo">Yo</option><option value="rival">Rival</option></select></div>
+<div class="row dos">
+  <button id="nuevo">Nuevo partido</button>
+  <button id="descartar">Descartar este</button>
+</div>
+
+<h2>Lo que oye</h2>
+<div id="oido">—</div>
+<label class="chk"><input type="checkbox" id="optVoz" checked> Confirmar el marcador por voz</label>
+<label class="chk"><input type="checkbox" id="optCont" checked> Escucha continua (si falla o repite, probar apagada)</label>
+
+<h2>Estadísticas de este partido</h2>
+<div id="stats"></div>
+
+<h2>Registro</h2>
+<ul id="log"></ul>
+
+<h2>Partidos guardados</h2>
+<div id="historial"></div>
+<div class="row dos">
+  <button id="exportar">Exportar todo (JSON)</button>
+</div>
+
+<details class="ayuda">
+  <summary>Comandos y reglas</summary>
+  <p><code>positivo</code> / <code>negativo</code> (o <code>sumar</code> / <code>restar</code>) solos, o seguidos de:<br>
+  <code>corto</code> + <code>derecha</code> | <code>izquierda</code> | <code>centro</code><br>
+  <code>largo</code> + <code>arriba</code> | <code>cortado</code><br>
+  <code>ataque</code> · <code>bloqueo</code><br>
+  <code>borrar</code> deshace el último punto, aunque haya cerrado un set.</p>
+  <p>Set a 11 con diferencia de 2. El saque cambia cada 2 puntos y cada punto desde 10-10. Quien saca primero se alterna en cada set. Los partidos se guardan solos en este dispositivo.</p>
+</details>
+
+<script>
+//PARSER-START
+const SUMA  = ['positivo','positiva','positivos','sumar','suma','sumas','sumo','zumar','zuma'];
+const RESTA = ['negativo','negativa','negativos','restar','resta','restas','resto'];
+const BORRA = ['borrar','borra','borro'];
+const TIPOS = {
+  corto:'corto', corta:'corto', cortos:'corto',
+  largo:'largo', larga:'largo', largos:'largo',
+  ataque:'ataque', ataques:'ataque', atacar:'ataque', ataco:'ataque',
+  bloqueo:'bloqueo', bloqueos:'bloqueo', bloquear:'bloqueo', bloque:'bloqueo'
+};
+const SUBS = {
+  corto: { derecha:'derecha', derecho:'derecha', izquierda:'izquierda', izquierdo:'izquierda', centro:'centro', central:'centro' },
+  largo: { arriba:'arriba', cortado:'cortado', cortada:'cortado' }
+};
+
+function normalizar(s) {
+  return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(Boolean);
+}
+
+// Devuelve una lista de comandos: {accion:'punto', quien, tipo, sub} o {accion:'borrar'}
+function interpretar(texto) {
+  const t = normalizar(texto), out = [];
+  for (let i = 0; i < t.length; i++) {
+    if (BORRA.includes(t[i])) { out.push({ accion:'borrar' }); continue; }
+    const quien = SUMA.includes(t[i]) ? 'yo' : RESTA.includes(t[i]) ? 'rival' : null;
+    if (!quien) continue;
+    const cmd = { accion:'punto', quien, tipo:null, sub:null };
+    // Mira hasta 3 palabras adelante buscando el detalle
+    for (let j = i + 1; j < t.length && j <= i + 3; j++) {
+      const w = t[j];
+      if (SUMA.includes(w) || RESTA.includes(w) || BORRA.includes(w)) break;
+      if (!cmd.tipo && TIPOS[w]) { cmd.tipo = TIPOS[w]; continue; }
+      if (cmd.tipo && SUBS[cmd.tipo] && !cmd.sub && SUBS[cmd.tipo][w]) cmd.sub = SUBS[cmd.tipo][w];
+    }
+    out.push(cmd);
+  }
+  return out;
+}
+//PARSER-END
+
+//REGLAS-START
+const PUNTOS_SET = 11;
+const otro = q => q === 'yo' ? 'rival' : 'yo';
+
+// Quién saca el próximo punto en el set k (0 = primer set) con el marcador dado.
+// Cambia cada 2 puntos y cada punto desde 10-10; quien saca primero se alterna por set.
+function sacaEn(p, k, yo, rival) {
+  const primero = k % 2 === 0 ? p.sacaPrimero : otro(p.sacaPrimero);
+  const n = yo + rival;
+  const tocaPrimero = (yo >= PUNTOS_SET - 1 && rival >= PUNTOS_SET - 1) ? n % 2 === 0 : Math.floor(n / 2) % 2 === 0;
+  return tocaPrimero ? primero : otro(primero);
+}
+
+// Reconstruye todo el estado del partido a partir de la lista de puntos.
+function calcular(p) {
+  const necesita = Math.ceil(p.mejorDe / 2);
+  const sets = [], anotados = [];
+  let yo = 0, rival = 0, sy = 0, sr = 0, ganador = null;
+  for (const ev of p.eventos) {
+    if (ganador) break;
+    anotados.push({ quien:ev.quien, tipo:ev.tipo, sub:ev.sub, t:ev.t, set:sets.length + 1, saca:sacaEn(p, sets.length, yo, rival), antes:[yo, rival] });
+    if (ev.quien === 'yo') yo++; else rival++;
+    if (Math.max(yo, rival) >= PUNTOS_SET && Math.abs(yo - rival) >= 2) {
+      const g = yo > rival ? 'yo' : 'rival';
+      sets.push({ yo, rival, ganador:g });
+      if (g === 'yo') sy++; else sr++;
+      yo = 0; rival = 0;
+      if (sy === necesita) ganador = 'yo'; else if (sr === necesita) ganador = 'rival';
+    }
+  }
+  return { sets, yo, rival, sy, sr, ganador, anotados, saca: ganador ? null : sacaEn(p, sets.length, yo, rival) };
+}
+//REGLAS-END
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+const etiqueta = ev => ev.tipo ? ev.tipo + (ev.sub ? ' ' + ev.sub : '') : 'sin detalle';
+
+// ---- Guardado: todos los partidos viven en este dispositivo ----
+const CLAVE = 'marcadorVoz.v1';
+let datos = { partidos:[], actualId:null, mejorDe:3, sacaPrimero:'yo' };
+try { const d = JSON.parse(localStorage.getItem(CLAVE)); if (d && Array.isArray(d.partidos)) datos = Object.assign(datos, d); } catch (e) {}
+
+function partidoNuevo() {
+  return { id:'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), inicio:Date.now(), rival:'', mejorDe:datos.mejorDe, sacaPrimero:datos.sacaPrimero, eventos:[] };
+}
+let p = datos.partidos.find(x => x.id === datos.actualId) || partidoNuevo();
+
+function guardar() {
+  // El partido en curso entra al historial en cuanto tiene un punto; uno vacío no se guarda.
+  const i = datos.partidos.findIndex(x => x.id === p.id);
+  if (p.eventos.length) { if (i < 0) datos.partidos.push(p); else datos.partidos[i] = p; }
+  else if (i >= 0) datos.partidos.splice(i, 1);
+  datos.actualId = p.id; datos.mejorDe = p.mejorDe; datos.sacaPrimero = p.sacaPrimero;
+  try { localStorage.setItem(CLAVE, JSON.stringify(datos)); } catch (e) { estado('No se pudo guardar en este dispositivo.'); }
+}
+
+// ---- Pantalla ----
+function tablaStats(e) {
+  const filas = {};
+  for (const ev of e.anotados) {
+    const k = etiqueta(ev);
+    filas[k] = filas[k] || { yo:0, rival:0 };
+    filas[k][ev.quien]++;
+  }
+  const claves = Object.keys(filas).sort();
+  if (!claves.length) return '<p class="vacio">Sin puntos todavía.</p>';
+  return '<table><thead><tr><th>Jugada</th><th>Gané</th><th>Perdí</th></tr></thead><tbody>' +
+    claves.map(k => `<tr><td>${esc(k)}</td><td>${filas[k].yo}</td><td>${filas[k].rival}</td></tr>`).join('') + '</tbody></table>';
+}
+
+function fecha(t) {
+  return new Date(t).toLocaleString('es', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
+}
+
+function pintarHistorial() {
+  const abiertos = new Set([...document.querySelectorAll('#historial details[open]')].map(d => d.dataset.id));
+  const lista = datos.partidos.slice().sort((a, b) => b.inicio - a.inicio);
+  if (!lista.length) { $('historial').innerHTML = '<p class="vacio">Todavía no hay partidos guardados.</p>'; return; }
+  $('historial').innerHTML = lista.map(x => {
+    const e = calcular(x);
+    const res = e.ganador ? (e.ganador === 'yo' ? 'Ganado' : 'Perdido') : (x.id === p.id ? 'En curso' : 'Sin terminar');
+    const parciales = e.sets.map(s => s.yo + '-' + s.rival).concat(e.ganador ? [] : [e.yo + '-' + e.rival + '…']).join(', ');
+    return `<details class="partido" data-id="${esc(x.id)}"${abiertos.has(x.id) ? ' open' : ''}>
+      <summary>${esc(fecha(x.inicio))} · vs ${esc(x.rival || 'Rival')} · <b>${e.sy}-${e.sr}</b> · ${res}</summary>
+      <div class="sets">Sets: ${esc(parciales)} · al mejor de ${x.mejorDe}</div>
+      ${tablaStats(e)}
+      <button data-borrar="${esc(x.id)}">Eliminar partido</button>
+    </details>`;
+  }).join('');
+}
+
+function pintar() {
+  const e = calcular(p);
+  const fin = e.ganador ? e.sets[e.sets.length - 1] : e; // terminado: se deja a la vista el último set
+  $('pYo').textContent = fin.yo;
+  $('pRival').textContent = fin.rival;
+  $('lblYo').textContent = 'Yo' + (e.saca === 'yo' ? ' · saca' : '');
+  $('lblRival').textContent = (p.rival || 'Rival') + (e.saca === 'rival' ? ' · saca' : '');
+  $('cabecera').innerHTML = e.ganador
+    ? `<b>Partido terminado</b> · ${e.ganador === 'yo' ? 'ganaste' : 'perdiste'} ${e.sy}-${e.sr}`
+    : `Set <b>${e.sets.length + 1}</b> · Sets <b>${e.sy}-${e.sr}</b> · al mejor de ${p.mejorDe}`;
+  $('parciales').textContent = e.sets.length ? 'Sets jugados: ' + e.sets.map(s => s.yo + '-' + s.rival).join(', ') : '';
+  $('stats').innerHTML = tablaStats(e);
+  if (document.activeElement !== $('cfgRival')) $('cfgRival').value = p.rival;
+  $('cfgMejor').value = String(p.mejorDe);
+  $('cfgSaca').value = p.sacaPrimero;
+  pintarHistorial();
+}
+
+function anotar(crudo, resultado, ok) {
+  const li = document.createElement('li');
+  const a = document.createElement('span'); a.className = 'raw'; a.textContent = '«' + crudo + '» → ';
+  const b = document.createElement('span'); b.className = ok ? 'ok' : 'no'; b.textContent = resultado;
+  li.append(a, b);
+  $('log').prepend(li);
+  while ($('log').children.length > 40) $('log').lastChild.remove();
+}
+
+// ---- Voz de confirmación ----
+let hablando = false, vozId = 0, vozActual = null, vozTope = null;
+function decir(texto) {
+  if (!$('optVoz').checked || !('speechSynthesis' in window)) return;
+  const u = new SpeechSynthesisUtterance(texto), id = ++vozId;
+  u.lang = 'es-US'; u.rate = 1.15;
+  vozActual = u; // se guarda la referencia: si Chrome la descarta, nunca avisa que terminó
+  hablando = true;
+  const fin = () => { if (id === vozId) setTimeout(() => { if (id === vozId) hablando = false; }, 300); };
+  u.onend = u.onerror = fin;
+  clearTimeout(vozTope);
+  vozTope = setTimeout(() => { if (id === vozId) hablando = false; }, 4000 + texto.length * 90); // tope: nunca queda bloqueado
+  speechSynthesis.cancel();
+  speechSynthesis.speak(u);
+}
+
+const dueno = q => q === 'yo' ? 'ti' : 'el rival';
+
+// Devuelve true si el texto traía al menos un comando
+function ejecutar(texto) {
+  const cmds = interpretar(texto);
+  if (!cmds.length) { anotar(texto, 'ignorado', false); return false; }
+  const antes = calcular(p), partes = [];
+  let cambio = false;
+  for (const c of cmds) {
+    if (c.accion === 'borrar') {
+      const ev = p.eventos.pop();
+      if (ev) cambio = true;
+      partes.push(ev ? 'borrado' : 'nada que borrar');
+    } else if (calcular(p).ganador) {
+      partes.push('partido terminado, punto ignorado');
+    } else {
+      p.eventos.push({ quien:c.quien, tipo:c.tipo, sub:c.sub, t:Date.now() });
+      cambio = true;
+      partes.push((c.quien === 'yo' ? '+1 yo' : '+1 rival') + (c.tipo ? ' · ' + etiqueta(c) : ''));
+    }
+  }
+  guardar(); pintar();
+  anotar(texto, partes.join(' | '), cambio);
+
+  const e = calcular(p), ult = cmds[cmds.length - 1];
+  const sets = `Sets: tú ${e.sy}, rival ${e.sr}.`;
+  let frase;
+  if (!cambio && e.ganador) frase = 'Partido terminado.';
+  else if (!cambio) frase = 'Nada que borrar.';
+  else if (e.ganador && !antes.ganador) {
+    const s = e.sets[e.sets.length - 1];
+    frase = `Partido para ${dueno(e.ganador)}. Último set ${Math.max(s.yo, s.rival)} a ${Math.min(s.yo, s.rival)}. ${sets}`;
+  } else if (e.sets.length > antes.sets.length) {
+    const s = e.sets[e.sets.length - 1];
+    frase = `Set para ${dueno(s.ganador)}, ${Math.max(s.yo, s.rival)} a ${Math.min(s.yo, s.rival)}. ${sets} ${e.saca === 'yo' ? 'Sacas tú' : 'Saca el rival'}.`;
+  } else {
+    const orden = e.saca === 'yo' ? `${e.yo} a ${e.rival}` : `${e.rival} a ${e.yo}`; // primero el que saca
+    const detalle = ult.accion === 'borrar' ? 'deshecho' : (ult.tipo ? etiqueta(ult) : '');
+    frase = orden + (detalle ? ', ' + detalle : '');
+  }
+  decir(frase);
+  return true;
+}
+
+// ---- Reconocimiento de voz (Web Speech API, requiere internet en Android) ----
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const PAUSA = 800;     // ms sin cambios para dar por terminada una frase aunque el motor no la cierre
+const ATASCO = 5000;   // ms con texto pendiente sin cerrar antes de reiniciar el micrófono
+const SILENCIO = 25000;// ms sin ninguna señal del motor antes de reiniciarlo por si quedó colgado
+let rec = null, escuchando = false, idioma = 'es-CR', ultimo = { txt:'', t:0 }, bloqueo = null;
+let hechos = 0, tPausa = null, tAtasco = null, ultimaSenal = 0, reinicios = 0;
+
+function estado(msg) { $('estado').textContent = msg; }
+function limpiarRelojes() { clearTimeout(tPausa); clearTimeout(tAtasco); tPausa = tAtasco = null; }
+
+function procesarFinal(txt) {
+  const ahora = Date.now();
+  if (txt === ultimo.txt && ahora - ultimo.t < 1500) return false; // evita duplicados del motor
+  ultimo = { txt, t: ahora };
+  return ejecutar(txt);
+}
+
+function alResultado(r, e) {
+  if (r !== rec) return; // resultado de una sesión ya descartada
+  ultimaSenal = Date.now();
+  let pendiente = '';
+  for (let i = hechos; i < e.results.length; i++) {
+    const res = e.results[i], txt = res[0].transcript.trim();
+    if (res.isFinal) {
+      hechos = i + 1;
+      if (txt) { $('oido').textContent = txt; if (!hablando) procesarFinal(txt); }
+    } else if (txt) pendiente += (pendiente ? ' ' : '') + txt;
+  }
+  limpiarRelojes();
+  if (!pendiente) return;
+  $('oido').textContent = pendiente + ' …';
+  // El motor a veces deja la frase "en borrador" y no la cierra nunca: si no cambia en un rato, se usa tal cual.
+  const revisar = () => {
+    if (r !== rec) return;
+    if (hablando) { tPausa = setTimeout(revisar, 300); return; }
+    if (interpretar(pendiente).length) { procesarFinal(pendiente); reiniciar(); }
+  };
+  tPausa = setTimeout(revisar, PAUSA);
+  tAtasco = setTimeout(() => { if (r === rec) reiniciar(); }, ATASCO);
+}
+
+function arrancar() {
+  if (!escuchando || rec) return;
+  const r = new SR();
+  r.lang = idioma;
+  r.continuous = $('optCont').checked;
+  r.interimResults = true;
+  r.maxAlternatives = 1;
+  r.onstart = () => { ultimaSenal = Date.now(); estado('Escuchando (' + idioma + ')' + (reinicios ? ' · reinicios: ' + reinicios : '') + '…'); };
+  r.onspeechstart = r.onsoundstart = r.onaudiostart = () => { ultimaSenal = Date.now(); };
+  r.onresult = e => alResultado(r, e);
+  r.onerror = e => {
+    if (e.error === 'no-speech' || e.error === 'aborted') return;
+    if (e.error === 'language-not-supported' && idioma !== 'es-US') { idioma = 'es-US'; return; }
+    if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { detener(); estado('Permiso de micrófono denegado.'); return; }
+    if (e.error === 'network') { estado('Sin conexión: este modo necesita internet.'); return; }
+    estado('Error: ' + e.error);
+  };
+  r.onend = () => {
+    if (r === rec) { rec = null; limpiarRelojes(); }
+    if (escuchando) setTimeout(arrancar, 150);
+  };
+  rec = r; hechos = 0; ultimaSenal = Date.now();
+  try { r.start(); }
+  catch (e) { rec = null; estado('No se pudo iniciar: ' + e.message); setTimeout(arrancar, 1000); }
+}
+
+// Descarta la sesión actual y abre una nueva (limpia cualquier frase atascada)
+function reiniciar() {
+  limpiarRelojes();
+  const viejo = rec; rec = null;
+  if (viejo) { reinicios++; try { viejo.abort(); } catch (e) {} }
+  setTimeout(arrancar, 150);
+}
+
+// Vigilante: si el motor lleva mucho sin dar señales, se reinicia por si quedó colgado
+setInterval(() => {
+  if (escuchando && rec && !hablando && Date.now() - ultimaSenal > SILENCIO) reiniciar();
+}, 5000);
+
+async function iniciar() {
+  if (!SR) { estado('Este navegador no soporta reconocimiento de voz. Usa Chrome.'); return; }
+  escuchando = true; reinicios = 0; hablando = false;
+  $('mic').textContent = 'Detener escucha'; $('mic').classList.add('on');
+  try { bloqueo = await navigator.wakeLock.request('screen'); } catch (e) {}
+  arrancar();
+}
+
+function detener() {
+  escuchando = false;
+  $('mic').textContent = 'Iniciar escucha'; $('mic').classList.remove('on');
+  limpiarRelojes();
+  const viejo = rec; rec = null;
+  try { viejo && viejo.abort(); } catch (e) {}
+  try { bloqueo && bloqueo.release(); } catch (e) {}
+  estado('Micrófono apagado.');
+}
+
+// ---- Botones y configuración ----
+$('mic').onclick = () => escuchando ? detener() : iniciar();
+$('optCont').onchange = () => { if (escuchando) reiniciar(); };
+document.querySelectorAll('[data-cmd]').forEach(b => b.onclick = () => ejecutar(b.dataset.cmd));
+
+$('cfgRival').oninput = () => { p.rival = $('cfgRival').value.trim(); guardar(); pintar(); };
+$('cfgMejor').onchange = () => { p.mejorDe = Number($('cfgMejor').value); guardar(); pintar(); };
+$('cfgSaca').onchange = () => { p.sacaPrimero = $('cfgSaca').value; guardar(); pintar(); };
+
+function empezarOtro() { p = partidoNuevo(); guardar(); $('log').innerHTML = ''; pintar(); }
+function eliminar(id) {
+  datos.partidos = datos.partidos.filter(x => x.id !== id);
+  if (id === p.id) empezarOtro(); else { guardar(); pintar(); }
+}
+
+$('nuevo').onclick = () => {
+  const e = calcular(p);
+  if (p.eventos.length && !e.ganador && !confirm('Este partido no ha terminado. Se guarda como "sin terminar" y empieza uno nuevo. ¿Continuar?')) return;
+  empezarOtro();
+};
+$('descartar').onclick = () => {
+  if (!p.eventos.length) return;
+  if (!confirm('¿Eliminar este partido y todos sus puntos?')) return;
+  eliminar(p.id);
+};
+$('historial').onclick = ev => {
+  const id = ev.target.dataset && ev.target.dataset.borrar;
+  if (!id || !confirm('¿Eliminar este partido guardado?')) return;
+  eliminar(id);
+};
+$('exportar').onclick = () => {
+  if (!datos.partidos.length) { estado('No hay partidos para exportar.'); return; }
+  const blob = new Blob([JSON.stringify(datos.partidos, null, 2)], { type:'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'partidos-' + new Date().toISOString().slice(0, 10) + '.json';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+};
+
+pintar();
+</script>
+</body>
+</html>
